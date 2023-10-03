@@ -1,0 +1,13 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.groupDefaultImage = exports.userDefaultImage = exports.frontendLocation = exports.frontEndLocations = exports.siteName = exports.jwtSecret = exports.connectionString = exports.emailAddress = exports.emailName = exports.host = void 0;
+exports.host = process.env.HOST;
+exports.emailName = process.env.EMAIL_NAME;
+exports.emailAddress = process.env.EMAIL_ADDRESS;
+exports.connectionString = process.env.MONGODB_URL;
+exports.jwtSecret = process.env.JWT_SECRET;
+exports.siteName = process.env.SITE_NAME;
+exports.frontEndLocations = process.env.FRONT_END_LOCATIONS;
+exports.frontendLocation = process.env.FRONT_END_LOCATION;
+exports.userDefaultImage = process.env.DEFAULT_USER_IMAGE;
+exports.groupDefaultImage = process.env.DEFAULT_GROUP_IMAGE;

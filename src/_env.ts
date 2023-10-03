@@ -1,0 +1,10 @@
+export const host = (process.env.HOST as string)
+export const emailName = process.env.EMAIL_NAME as string
+export const emailAddress = process.env.EMAIL_ADDRESS as string
+export const connectionString = process.env.MONGODB_URL as string
+export const jwtSecret = process.env.JWT_SECRET as string
+export const siteName = process.env.SITE_NAME as string
+export const frontEndLocations = process.env.FRONT_END_LOCATIONS as string
+export const frontendLocation = process.env.FRONT_END_LOCATION as string
+export const userDefaultImage = process.env.DEFAULT_USER_IMAGE as string
+export const groupDefaultImage = (process.env.DEFAULT_GROUP_IMAGE as string)
