@@ -94,6 +94,16 @@ interface getGroupRequest extends Request<never, never, never, { groupID?: strin
 	token?: string
 }
 
+interface setBlockGroupRequest extends Request<never, never, { groupID?: string, value: boolean }, never> {
+	user?: InstanceType<typeof User>
+	token?: string
+}
+
+interface setDeleteGroupRequest extends Request<never, never, { groupID?: string }, never> {
+	user?: InstanceType<typeof User>
+	token?: string
+}
+
 interface getMessagesRequest extends Request<never, never, never, { groupID?: string, limit?: string, skip?: string, sortBy?: string }> {
 	user?: InstanceType<typeof User>
 	token?: string
@@ -120,6 +130,11 @@ interface editGroupRequest extends Request<never, never, { groupID?: string, nam
 }
 
 interface banFromGroupRequest extends Request<never, never, { groupID?: string, bannedUserID?: string }, never> {
+	user?: InstanceType<typeof User>
+	token?: string
+}
+
+interface addGroupMemberRequest extends Request<never, never, { groupID?: string, memberID?: string }, never> {
 	user?: InstanceType<typeof User>
 	token?: string
 }

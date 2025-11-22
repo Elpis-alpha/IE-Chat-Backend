@@ -10,7 +10,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const delay = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
-    yield new Promise(resolve => setTimeout(resolve, 1000));
+    yield new Promise(resolve => setTimeout(resolve, 10000));
     next();
 });
 exports.default = delay;

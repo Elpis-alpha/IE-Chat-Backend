@@ -29,17 +29,24 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const auth_1 = __importDefault(require("../middleware/auth"));
 const routes = __importStar(require("../controllers/chat.controller"));
+const multer_1 = require("../helpers/multer");
 const router = express_1.default.Router();
 // Sends post request to find or create new dialogue
 router.post('/dialogue/find-or-create', auth_1.default, routes.findOrCreateDialogue);
 // Sends post request to create a new group
-router.post('/group/create', auth_1.default, routes.createGroup);
+router.post('/group/create', auth_1.default, multer_1.multerUploads, routes.createGroup);
 // Sends get request to get a group
 router.get('/room/get', auth_1.default, routes.getGroup);
 // Sends get request to get all rooms
 router.get('/room/get-all', auth_1.default, routes.getRooms);
-// Sends get request to get all rooms
+// Sends get request to get all messages
 router.get('/room/get-messages', auth_1.default, routes.getMessages);
+// Sends post request to set block status
+router.post('/room/set-block-status', auth_1.default, routes.setBlockGroup);
+// send post request to add a group member
+router.post('/group/add-member', auth_1.default, routes.addGroupMember);
+// Sends delete request to delete a group
+router.delete('/room/delete', auth_1.default, routes.deleteGroup);
 // Sends post request to create and upload the users profile avatar
 // router.post('/avatar/upload', auth, multerUploads, routes.saveUserImage)
 exports.default = router;

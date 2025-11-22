@@ -1,12 +1,36 @@
 import Group from "../models/Group"
 import { errorJson } from "../middleware/errors";
-import { Response, banFromGroupRequest, createDialogueRequest, createGroupRequest, editGroupRequest, getGroupRequest, getMessagesRequest, muteGroupRequest, pinGroupRequest, toggleBlockDialogueRequest } from "../types/request";
+import { Response, addGroupMemberRequest, banFromGroupRequest, createDialogueRequest, createGroupRequest, editGroupRequest, getGroupRequest, getMessagesRequest, muteGroupRequest, pinGroupRequest, setBlockGroupRequest, setDeleteGroupRequest, toggleBlockDialogueRequest } from "../types/request";
 import { v4 } from "uuid";
 import Message from "../models/Message";
 import User from "../models/User";
 import { groupDefaultImage } from "../_env";
-import { IMessageInstanceX } from "../types/models";
+import { IGroupInstance, IMessageInstanceX, IUserInstance } from "../types/models";
 import { getLimitSkipSort } from "../helpers/SpecialCtrl";
+import { dataUri } from "../helpers/multer";
+import { uploader } from "../helpers/cloudinary";
+
+// function that saves user image
+const saveGroupImageFunction = async (req: any, group: IGroupInstance) => {
+	if (!group) throw new Error('Invalid Room')
+
+	const image = dataUri(req, "djhsdf");
+	if (!image) throw new Error('Invalid Image - datauri')
+
+	try {
+		const cloudImage = await uploader.upload(image, {
+			folder: 'ie-chat/group-image',
+			public_id: group._id.toString(),
+			invalidate: true,
+		})
+		if (cloudImage?.secure_url) {
+			return cloudImage.secure_url
+		} else throw new Error("Image issues")
+	} catch (error) {
+		console.log('cloud error', error)
+		throw new Error("Image issues")
+	}
+}
 
 
 // Sends post request to find or create new group
@@ -22,7 +46,7 @@ export const findOrCreateDialogue = async (req: createDialogueRequest, res: Resp
 		if (!friend) throw new Error("Invalid friendID")
 
 		let groupExists = await Group.findOne({ "members.memberID": { $all: [req.user._id, friend._id] }, groupType: "dialogue" })
-		if (groupExists) return res.send({ message: "success", data: groupExists })
+		if (groupExists) return res.send({ message: "success", data: groupExists, friend: friend.toPublicJSON() })
 		else if (onlyExist === true) {
 			return res.send({ message: "does-not-exist", data: friend.toPublicJSON() })
 		}
@@ -98,6 +122,9 @@ export const createGroup = async (req: createGroupRequest, res: Response) => {
 
 		group.recent.message = message._id
 		group.recent.date = message.createdAt
+		await group.validate()
+
+		if (req.file) group.groupImage = await saveGroupImageFunction(req, group)
 		await group.save()
 
 		return res.send({ message: "success", data: group, roomKey: group.roomKey })
@@ -112,14 +139,83 @@ export const getGroup = async (req: getGroupRequest, res: Response) => {
 
 	try {
 		const { groupID } = req.query
+		const user = req.user
 		if (typeof groupID !== "string") throw new Error("Invalid req query: groupID")
 
 		const group = await Group.findOne({ _id: groupID, "members.memberID": req.user._id })
 		if (!group) throw new Error("Invalid groupID, group not found")
 
-		const admin = group.members.find(x => (x.memberID === req.user?._id) && (x.isAdmin === true)) ? group.roomKey : undefined
+		const admin = group.members.find(x => (x.memberID.toString() === req.user?._id.toString()) && (x.isAdmin === true)) ? group.roomKey : undefined
+		let members: Object[] = []
 
-		return res.send({ message: "success", data: group, roomKey: admin })
+		const idOfOtherParticipants = group.members.map(x => x.memberID)
+		const otherParticipants = await User.find({ _id: { $in: idOfOtherParticipants } })
+
+		for (let i = 0; i < otherParticipants.length; i++) {
+			const cc = otherParticipants[i];
+			members.push(cc.toPublicJSON())
+		}
+
+		return res.send({ message: "success", data: group, roomKey: admin, members })
+	} catch (error) {
+		return errorJson(res, 400, String(error))
+	}
+}
+
+
+// Sends get request to get group
+export const setBlockGroup = async (req: setBlockGroupRequest, res: Response) => {
+	if (!req.user || !req.token) return errorJson(res, 401, "Not Logged In")
+
+	try {
+		const { groupID, value } = req.body
+		if (typeof groupID !== "string") throw new Error("Invalid req body: groupID")
+		if (typeof value !== "boolean") throw new Error("Invalid req body: value")
+
+		const group = await Group.findOne({ _id: groupID, "members.memberID": req.user._id, groupType: "dialogue" })
+		if (!group) throw new Error("Invalid groupID, group not found")
+
+		if (group.blocked.status === true) {
+			if (group.blocked.by.toString() !== req.user._id.toString()) throw new Error("Group was not blocked by you")
+			group.blocked.status = value
+			group.blocked.by = req.user._id
+		} else {
+			group.blocked.status = value
+			group.blocked.by = req.user._id
+		}
+
+		await group.save()
+		return res.send({ message: "success", blocked: value })
+	} catch (error) {
+		return errorJson(res, 400, String(error))
+	}
+}
+
+// send delete request to delete group
+export const deleteGroup = async (req: setDeleteGroupRequest, res: Response) => {
+	if (!req.user || !req.token) return errorJson(res, 401, "Not Logged In")
+
+	try {
+		const { groupID } = req.body
+		if (typeof groupID !== "string") throw new Error("Invalid req body: groupID")
+
+		const group = await Group.findOne({ _id: groupID, "members.memberID": req.user._id })
+		if (!group) throw new Error("Invalid groupID, group not found")
+
+		if (group.groupType === "dialogue") {
+			if (group.blocked.status === true) throw new Error("Dialogue is blocked");
+
+			await Message.deleteMany({ room: group._id })
+			await Group.deleteOne({ _id: groupID, "members.memberID": req.user._id, groupType: "dialogue", "blocked.status": false })
+		} else {
+			const me = group.members.find(x => x.memberID.toString() === req.user?._id.toString())
+			if (!me?.isAdmin) throw new Error("User is not an admin");
+
+			await Message.deleteMany({ room: group._id })
+			await Group.deleteOne({ _id: groupID, "members.memberID": req.user._id, groupType: "group" })
+		}
+
+		return res.send({ message: "success" })
 	} catch (error) {
 		return errorJson(res, 400, String(error))
 	}
@@ -151,9 +247,9 @@ export const getRooms = async (req: getGroupRequest, res: Response) => {
 
 	try {
 		const user = req.user
-		let friend
+		let friend, friends
 
-		const groups = await Group.find({ "members.memberID": req.user._id }).select(["groupType", "groupImage", "groupName", "recent", "blocked", "members"]).sort({ "recent.date": -1 }).lean()
+		const groups = await Group.find({ "members.memberID": req.user._id, "blocked.status": false }).select(["groupType", "groupImage", "groupName", "recent", "blocked", "members"]).sort({ "recent.date": -1 }).lean()
 		if (!groups) throw new Error("Invalid groupID, groups not found")
 
 		const data: roomListItemDataType[] = []
@@ -170,12 +266,17 @@ export const getRooms = async (req: getGroupRequest, res: Response) => {
 
 				name = friendX.name
 				image = friendX.avatar
-				friend = { _id: friendX._id.toString(), username: friendX.username }
+				friend = { _id: friendX._id.toString(), name: friendX.username }
+			} else {
+				const listOfMembers = group.members.map(x => x.memberID.toString())
+				const friendX = await User.find({ _id: { $in: listOfMembers } }).select(["name"])
+
+				friends = friendX.map(x => ({ _id: x._id.toString(), name: x.name }))
 			}
 
 			data.push({
 				profile: group.members.find(x => x.memberID.toString() === user._id.toString()),
-				groupID: group._id.toString(), name, image, groupType: group.groupType, friend,
+				groupID: group._id.toString(), name, image, groupType: group.groupType, friend, friends,
 				recent: group.recent,
 				blocked: group.blocked,
 				members: group.members.map(x => x.memberID.toString()),
@@ -199,7 +300,7 @@ export const togglePinGroup = async (req: pinGroupRequest, res: Response) => {
 
 		const group = await Group.findOne({ _id: groupID, "members.memberID": req.user._id })
 		if (!group) throw new Error("Invalid groupID, group not found")
-		group.members = group.members.map(m => m.memberID === req.user?._id ? { ...m, pinned: !m.pinned } : m)
+		group.members = group.members.map(m => m.memberID.toString() === req.user?._id.toString() ? { ...m, pinned: !m.pinned } : m)
 		await group.save()
 
 		return res.send({ message: "success", data: group })
@@ -218,7 +319,7 @@ export const toggleMuteGroup = async (req: muteGroupRequest, res: Response) => {
 
 		const group = await Group.findOne({ _id: groupID, "members.memberID": req.user._id })
 		if (!group) throw new Error("Invalid groupID, group not found")
-		group.members = group.members.map(m => m.memberID === req.user?._id ? { ...m, muted: !m.muted } : m)
+		group.members = group.members.map(m => m.memberID.toString() === req.user?._id.toString() ? { ...m, muted: !m.muted } : m)
 		await group.save()
 
 		return res.send({ message: "success", data: group })
@@ -301,7 +402,7 @@ export const kickFromGroup = async (req: banFromGroupRequest, res: Response) => 
 		const group = await Group.findOne({ _id: groupID, groupType: "group", "members.memberID": req.user._id })
 		if (!group) throw new Error("Invalid groupID, group not found")
 
-		const admin = group.members.find(x => (x.memberID === req.user?._id) && (x.isAdmin === true))
+		const admin = group.members.find(x => (x.memberID.toString() === req.user?._id.toString()) && (x.isAdmin === true))
 		if (!admin) throw new Error("User is not an admin");
 
 		const bannedUser = group.members.find(x => x.memberID.toString() === bannedUserID)
@@ -318,6 +419,40 @@ export const kickFromGroup = async (req: banFromGroupRequest, res: Response) => 
 		await group.save()
 
 		return res.send({ message: "success", data: group })
+	} catch (error) {
+		return errorJson(res, 400, String(error))
+	}
+}
+
+// send post request to add a group member
+export const addGroupMember = async (req: addGroupMemberRequest, res: Response) => {
+	if (!req.user || !req.token) return errorJson(res, 401, "Not Logged In")
+
+	try {
+		const { groupID, memberID } = req.body
+		if (typeof groupID !== "string") throw new Error("Invalid req body: groupID")
+		if (typeof memberID !== "string") throw new Error("Invalid memberID")
+
+		const group = await Group.findOne({ _id: groupID, groupType: "group", "members.memberID": req.user._id })
+		if (!group) throw new Error("Invalid groupID, group not found")
+
+		const admin = group.members.find(x => (x.memberID.toString() === req.user?._id.toString()))
+		if (!admin?.isAdmin) throw new Error("User is not an admin");
+
+		const memberExists = group.members.find(x => x.memberID.toString() === memberID)
+		if (memberExists) throw new Error("Member is already in the group");
+
+		const member = await User.findById(memberID)
+		if (!member) throw new Error("Invalid memberID");
+
+		const { error, message } = await Message.sendAdminMessage(group, `<id-${req.user._id}> added <id-${member._id}> to the group`, "text")
+		if (error || !message) throw new Error("Admin message failed to send");
+
+		const { error: errorX, message: messageX } = await group.addGroupMember(member)
+		if (errorX) throw new Error(String(errorX));
+
+		await group.save()
+		return res.send({ message: "success", data: messageX })
 	} catch (error) {
 		return errorJson(res, 400, String(error))
 	}

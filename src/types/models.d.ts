@@ -88,6 +88,7 @@ export interface IGroup {
 	createdAt: NativeDate
 	updatedAt: NativeDate
 	toPublicJSON: () => Object
+	addGroupMember: (user: IUserInstanceX) => Promise<{ group?: IGroupInstanceX, error?: string, message?: string }>
 }
 export interface IGroupDocument extends IGroup, Document { }
 export interface IGroupModel extends Model<IGroupDocument> {
